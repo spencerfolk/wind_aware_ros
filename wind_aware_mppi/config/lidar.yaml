@@ -1,0 +1,9 @@
+lidar_freq: 10.0
+azim_fov: 360.0
+azim_res: 1.0
+elev_fov: 45.0
+elev_res: 1.0
+range_min: 0.025
+range_max: 10.0
+set_max_inf: true
+use_rollpitch: true

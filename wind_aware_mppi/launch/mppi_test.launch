@@ -1,0 +1,38 @@
+<launch>
+
+  <arg name="config_path" value="$(find wind_aware_mppi)/config"/>
+  <arg name="launch_path" value="$(find wind_aware_mppi)/launch"/>
+  <arg name="mav_name" value="crazybl"/>
+  <arg name="obj_prefix" value="box"/>
+
+  <node pkg="mocap_vicon"
+    type="mocap_vicon_node"
+    name="vicon"
+    output="screen">
+    <param name="server_address" value="mocap.perch"/>
+    <param name="frame_rate" value="100"/>
+    <param name="max_accel" value="10.0"/>
+    <param name="publish_tf" value="true"/>
+    <param name="publish_pts" value="true"/>
+    <param name="fixed_frame_id" value="mocap"/>
+    <rosparam param="model_list">[]</rosparam>
+    <remap from="vicon/$(arg mav_name)/odom" to="/$(arg mav_name)/odom"/>
+    <remap from="vicon/$(arg mav_name)/pose" to="/$(arg mav_name)/pose"/>
+  </node>
+
+  <!-- LiDAR sensor -->
+
+  <include file="$(find lidar_spoofer)/launch/lidar_sensor.launch">
+    <arg name="robot_name" value="$(arg mav_name)" />
+    <arg name="obj_prefix" value="$(arg obj_prefix)" />
+    <arg name="config_file" value="$(arg config_path)/lidar.yaml" />
+  </include>
+
+  <!-- MPPI controller -->
+
+  <include file="$(arg launch_path)/mppi_control.launch">
+    <arg name="robot_name" value="$(arg mav_name)" />
+    <arg name="config_file" value="$(arg config_path)/mppi.yaml" />
+  </include>
+
+</launch>

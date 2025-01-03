@@ -1,0 +1,16 @@
+<launch>
+
+    <arg name="robot_name" default="robot"/>
+    <arg name="config_file"/>
+
+    <group ns="$(arg robot_name)">
+
+        <param name="robot_name" value="$(arg robot_name)" />
+        <rosparam file="$(arg config_file)"/>
+
+        <!-- Lidar spoofing node -->
+        <node pkg="wind_aware_mppi" type="wind_aware_mppi_node" name="wind_aware_mppi_node" output="screen">
+        </node>
+    </group>
+    
+</launch>

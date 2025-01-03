@@ -75,6 +75,8 @@ include_directories(
 ## Declare a C++ executable
 add_executable(wind_aware_mppi_node src/mppi_controller_node.cpp)
 
+add_dependencies(wind_aware_mppi_node ${catkin_EXPORTED_TARGETS})
+
 ## Specify libraries to link against
 target_link_libraries(wind_aware_mppi_node
   ${catkin_LIBRARIES}  # ROS libraries
