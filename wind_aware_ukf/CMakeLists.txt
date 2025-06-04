@@ -8,11 +8,14 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  kr_mav_msgs
   tf2_ros
   message_generation
   message_runtime
   tf2_eigen
   tf2
+  crazyflie_driver
+  kalman_filter
 )
 find_package(Eigen3 REQUIRED)
 
@@ -22,6 +25,18 @@ find_package(Eigen3 REQUIRED)
 ###################################
 ## catkin specific configuration ##
 ###################################
+add_message_files(
+  FILES
+  WindEstimate.msg
+  WindEstimateFullState.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+)
+
 catkin_package(
   CATKIN_DEPENDS geometry_msgs roscpp sensor_msgs std_msgs
 )
@@ -38,7 +53,7 @@ include_directories(
 )
 
 ## Declare a C++ executable
-add_executable(wind_aware_ukf_node src/wind_ukf_node.cpp)
+add_executable(wind_aware_ukf_node src/wind_ukf_node.cpp src/wind_ukf)
 
 ## Specify libraries to link against
 target_link_libraries(wind_aware_ukf_node
