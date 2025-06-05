@@ -1,0 +1,27 @@
+quad_params:
+  # Inertial properties
+  mass: 0.04
+  Ixx: 1.43e-5
+  Iyy: 1.43e-5
+  Izz: 2.89e-5
+  Ixy: 0.0
+  Iyz: 0.0
+  Ixz: 0.0
+
+  # Frame aerodynamic properties
+  c_Dx: 0.0
+  c_Dy: 0.0
+  c_Dz: 0.0
+
+  # Rotor properties
+  k_eta: 3.49e-08
+  k_m: 7.8e-10
+  k_d: 2.097e-6
+  k_z: 1.339e-5
+  k_h: 5.74e-4
+  k_flap: 0.0
+
+  # Motor properties
+  tau_m: 0.005
+  rotor_speed_min: 0
+  rotor_speed_max: 3100
