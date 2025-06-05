@@ -21,7 +21,6 @@ class WindEstimatorNode
 public:
 
     WindEstimatorNode(std::string ns);    
-    bool ready_;
 
     // Sensor Callbacks
     void imuCallback(const sensor_msgs::Imu::ConstPtr& msg);
@@ -30,12 +29,21 @@ public:
     void motorpwmCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg);
     void vbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg);
 
-    void publishWindEstimate(const ros::TimerEvent&);
+    void run(const ros::TimerEvent&);
+    void publishWindEstimate();
     
 private:
 
     // Configuration
     std::string mav_name_;  // Robot name for the motion capture callback. 
+
+    // State machine
+    bool filter_ready_;
+    bool imu_received_;
+    bool odom_received_;
+    bool so3cmd_received_;
+    bool motorpwm_received_;
+    bool vbat_received_;
 
     // Measurement arrays
     Eigen::Vector3d ground_velocity_;
@@ -43,6 +51,7 @@ private:
     Eigen::Vector3d linear_acceleration_;
     Eigen::Vector3d angular_velocity_;
     Eigen::Vector4d motor_pwms_;
+    Eigen::Vector4d motor_rpms_;
     double vbat_;
     double cmd_thrust_;
 
@@ -63,7 +72,8 @@ private:
     // tf2::Transform robot_tf_;
 
     // Wind estimator object. 
-    std::shared_ptr<WindUKF> estimator_;
+    // std::shared_ptr<WindUKF> estimator_;
+    WindUKF estimator_;
 };
 
 #endif //WIND_UKF_NODE_HPP

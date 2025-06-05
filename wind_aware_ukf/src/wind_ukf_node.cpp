@@ -1,6 +1,8 @@
 #include <wind_aware_ukf/wind_ukf_node.hpp>
 
-WindEstimatorNode::WindEstimatorNode(std::string ns): nh_(ns), ready_(false)
+WindEstimatorNode::WindEstimatorNode(std::string ns): nh_(ns), 
+    filter_ready_(false), imu_received_(false), odom_received_(false), so3cmd_received_(false), motorpwm_received_(false), vbat_received_(false),
+    estimator_(1.0 / 100, 0.040, 9.81, 2.097e-6, 1.339e-5, 5.74e-4)
 {
     /*
     Constructor
@@ -17,9 +19,6 @@ WindEstimatorNode::WindEstimatorNode(std::string ns): nh_(ns), ready_(false)
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateFullState>("wind_estimate", 1);
 
-    // // Initialize WindEstimator
-    estimator_ = std::make_shared<WindUKF>();
-
 }
 
 void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg) 
@@ -30,6 +29,8 @@ void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
 
     linear_acceleration_ << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
     angular_velocity_ << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
+
+    imu_received_ = true;
 
     // ROS_INFO_STREAM("imu_acc: " << linear_acceleration_.x() << "\t" << linear_acceleration_.y() << "\t" << linear_acceleration_.z());
 }
@@ -49,6 +50,8 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     orientation_.y() = msg->pose.pose.orientation.y;
     orientation_.z() = msg->pose.pose.orientation.z;
     orientation_.w() = msg->pose.pose.orientation.w;
+
+    odom_received_ = true;
 
     // ROS_INFO_STREAM("ground_velocity: " << ground_velocity_.x() << "\t" << ground_velocity_.y() << "\t" << ground_velocity_.z());
 }
@@ -75,6 +78,8 @@ void WindEstimatorNode::so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& 
     // Project force onto b3 direction (dot product)
     cmd_thrust_ = force.dot(b3);
 
+    so3cmd_received_ = true;
+
     // ROS_INFO_STREAM("cmd_thrust: " << cmd_thrust_);
 }
 
@@ -89,7 +94,13 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
                     static_cast<double>(msg->values[2]),
                     static_cast<double>(msg->values[3]);
 
-    // ROS_INFO_STREAM("motor_pwms: " << motor_pwms_[0] << "\t" << motor_pwms_[1] << "\t" << motor_pwms_[2] << "\t" << motor_pwms_[3]);
+    // Compute motor rpms using a mapping. In this case we can use the battery compensated model. 
+    // TODO: Remove these hard coded coefficients and move them to rosparams!
+    motor_rpms_ = pwmToMotorSpeedsBatCompensated(motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RPM);
+
+    motorpwm_received_ = true;
+
+    // ROS_INFO_STREAM("motor_rpms: " << motor_rpms_[0] << "\t" << motor_rpms_[1] << "\t" << motor_rpms_[2] << "\t" << motor_rpms_[3]);
 }
 
 void WindEstimatorNode::vbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg) 
@@ -99,12 +110,29 @@ void WindEstimatorNode::vbatCallback(const crazyflie_driver::GenericLogData::Con
     */
    vbat_ = msg->values[0];
 
-//    ROS_INFO_STREAM("vbat: " << vbat_);
+   vbat_received_ = true;
+
+    // ROS_INFO_STREAM("vbat: " << vbat_);
 }
 
-void WindEstimatorNode::publishWindEstimate(const ros::TimerEvent&)
+void WindEstimatorNode::run(const ros::TimerEvent&)
 {
-    ROS_INFO_STREAM("Running publishWindEstimate()");
+    if(!filter_ready_){
+        ROS_INFO_STREAM("Not all measurements received...");
+        // Wait until all of the measurements have been received. 
+        if(imu_received_ & odom_received_ & so3cmd_received_ & motorpwm_received_ & vbat_received_){
+            filter_ready_ = true;
+        }
+    }
+    else{ // All measurements are provided.
+        ROS_INFO_STREAM("All measurements received... Running filter iterate() method...");
+        estimator_.iterate();
+    }
+}
+
+void WindEstimatorNode::publishWindEstimate()
+{
+    return;
 }
 
 int main(int argc, char **argv)
@@ -122,7 +150,7 @@ int main(int argc, char **argv)
     pnh.param("estimator_freq", freq, 100.0f);
 
     // Set up a timer to produce measurements at a regular rate. 
-    ros::Timer timer = nh.createTimer(ros::Duration(1.0 / freq), &WindEstimatorNode::publishWindEstimate, &wind_estimator_node);
+    ros::Timer timer = nh.createTimer(ros::Duration(1.0 / freq), &WindEstimatorNode::run, &wind_estimator_node);
 
     // Spin!
     ros::spin();
