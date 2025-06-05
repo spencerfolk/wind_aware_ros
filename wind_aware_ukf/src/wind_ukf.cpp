@@ -4,11 +4,12 @@ WindUKF::WindUKF(
     double dt,
     double mass,
     double g,
+    double keta,
     double kd,
     double kz,
     double kh
     ) : ukf_t(17, 17), 
-    dt_(dt), mass_(mass), g_(g), kd_(kd), kz_(kz), kh_(kh)
+    dt_(dt), mass_(mass), g_(g), keta_(keta), kd_(kd), kz_(kz), kh_(kh)
 {
     // Initialize UKF parameters
     // ukf.Q = Eigen::MatrixXd::Identity(16, 16) * 0.1; // Process noise covariance

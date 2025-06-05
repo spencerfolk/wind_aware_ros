@@ -5,6 +5,8 @@
 #include <sensor_msgs/Imu.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Point.h>
+#include <geometry_msgs/Quaternion.h>
 #include <visualization_msgs/Marker.h>
 #include <kr_mav_msgs/SO3Command.h>
 #include <crazyflie_driver/GenericLogData.h>
@@ -20,7 +22,7 @@ class WindEstimatorNode
 {
 public:
 
-    WindEstimatorNode(std::string ns);    
+    WindEstimatorNode(std::string ns, double dt);    
 
     // Sensor Callbacks
     void imuCallback(const sensor_msgs::Imu::ConstPtr& msg);
@@ -30,7 +32,9 @@ public:
     void vbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg);
 
     void run(const ros::TimerEvent&);
+    void initializeFilter();
     void publishWindEstimate();
+    void publishWindVector();
     
 private:
 
@@ -38,7 +42,7 @@ private:
     std::string mav_name_;  // Robot name for the motion capture callback. 
 
     // State machine
-    bool filter_ready_;
+    bool filter_initialized_;
     bool imu_received_;
     bool odom_received_;
     bool so3cmd_received_;
@@ -65,6 +69,7 @@ private:
     ros::Subscriber vbat_sub_;
 
     ros::Publisher wind_estimate_pub_;
+    ros::Publisher wind_estimate_marker_pub_;
 
     // tf variables
     // tf2_ros::Buffer tf_buffer_;
@@ -74,6 +79,11 @@ private:
     // Wind estimator object. 
     // std::shared_ptr<WindUKF> estimator_;
     WindUKF estimator_;
+    Eigen::MatrixXd Q;
+    Eigen::MatrixXd R;
+    Eigen::VectorXd x0;
+    Eigen::MatrixXd P0;
+
 };
 
 #endif //WIND_UKF_NODE_HPP
