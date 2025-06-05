@@ -32,6 +32,14 @@ void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
 
     imu_received_ = true;
 
+    // Send measurements to estimator
+    estimator_.new_observation(7, angular_velocity_[0]);
+    estimator_.new_observation(8, angular_velocity_[1]);
+    estimator_.new_observation(9, angular_velocity_[2]);
+    estimator_.new_observation(13, linear_acceleration_[0]);
+    estimator_.new_observation(14, linear_acceleration_[1]);
+    estimator_.new_observation(15, linear_acceleration_[2]);
+
     // ROS_INFO_STREAM("imu_acc: " << linear_acceleration_.x() << "\t" << linear_acceleration_.y() << "\t" << linear_acceleration_.z());
 }
 
@@ -40,16 +48,28 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     /*
     Process odometry which contains the ground velocity estimate.
     */
-    // // Fill odom_data with relevant information from msg
-    // estimator->update(odom_data);
 
-    ground_velocity_.x() = msg->twist.twist.linear.x;
-    ground_velocity_.y() = msg->twist.twist.linear.y;
-    ground_velocity_.z() = msg->twist.twist.linear.z;
+    // Orientation
     orientation_.x() = msg->pose.pose.orientation.x;
     orientation_.y() = msg->pose.pose.orientation.y;
     orientation_.z() = msg->pose.pose.orientation.z;
     orientation_.w() = msg->pose.pose.orientation.w;
+
+    // Ground velocity (in world frame)
+    ground_velocity_.x() = msg->twist.twist.linear.x;
+    ground_velocity_.y() = msg->twist.twist.linear.y;
+    ground_velocity_.z() = msg->twist.twist.linear.z;
+
+    // Convert orientation to Euler angles (in radians, zyx convention)
+    Eigen::Vector3d euler = orientation_.toRotationMatrix().eulerAngles(2, 1, 0);
+
+    // Send measurements to estimator. 
+    estimator_.new_observation(4, euler[0]); // yaw
+    estimator_.new_observation(5, euler[1]); // pitch
+    estimator_.new_observation(6, euler[2]); // roll
+    estimator_.new_observation(10, ground_velocity_.x());
+    estimator_.new_observation(11, ground_velocity_.y());
+    estimator_.new_observation(12, ground_velocity_.z());
 
     odom_received_ = true;
 
@@ -78,6 +98,9 @@ void WindEstimatorNode::so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& 
     // Project force onto b3 direction (dot product)
     cmd_thrust_ = force.dot(b3);
 
+    // Send measurement to estimator
+    estimator_.new_observation(16, cmd_thrust_);
+
     so3cmd_received_ = true;
 
     // ROS_INFO_STREAM("cmd_thrust: " << cmd_thrust_);
@@ -97,6 +120,12 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
     // Compute motor rpms using a mapping. In this case we can use the battery compensated model. 
     // TODO: Remove these hard coded coefficients and move them to rosparams!
     motor_rpms_ = pwmToMotorSpeedsBatCompensated(motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RPM);
+
+    // Send measurement to estimator
+    estimator_.new_observation(0, motor_rpms_[0]);
+    estimator_.new_observation(1, motor_rpms_[1]);
+    estimator_.new_observation(2, motor_rpms_[2]);
+    estimator_.new_observation(3, motor_rpms_[3]);
 
     motorpwm_received_ = true;
 
