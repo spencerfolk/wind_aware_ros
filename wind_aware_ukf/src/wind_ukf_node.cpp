@@ -116,13 +116,16 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     // Convert orientation to Euler angles (in radians, zyx convention)
     Eigen::Vector3d euler = orientation_.toRotationMatrix().eulerAngles(2, 1, 0);
 
+    // Convert ground velocity to body frame. 
+    Eigen::Vector3d ground_velocity_body = orientation_.inverse() * ground_velocity_;
+
     // Send measurements to estimator. 
     estimator_.new_observation(4, euler[0]); // yaw
     estimator_.new_observation(5, euler[1]); // pitch
     estimator_.new_observation(6, euler[2]); // roll
-    estimator_.new_observation(10, ground_velocity_.x());
-    estimator_.new_observation(11, ground_velocity_.y());
-    estimator_.new_observation(12, ground_velocity_.z());
+    estimator_.new_observation(10, ground_velocity_body.x());
+    estimator_.new_observation(11, ground_velocity_body.y());
+    estimator_.new_observation(12, ground_velocity_body.z());
 
     odom_received_ = true;
 
