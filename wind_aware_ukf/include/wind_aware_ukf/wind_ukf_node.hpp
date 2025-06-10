@@ -22,7 +22,7 @@ class WindEstimatorNode
 {
 public:
 
-    WindEstimatorNode(std::string ns, double dt);    
+    WindEstimatorNode(std::string ns, double dt, double mass);    
 
     // Sensor Callbacks
     void imuCallback(const sensor_msgs::Imu::ConstPtr& msg);

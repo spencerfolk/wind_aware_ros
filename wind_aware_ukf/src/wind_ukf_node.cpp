@@ -1,9 +1,9 @@
 #include <wind_aware_ukf/wind_ukf_node.hpp>
 
-WindEstimatorNode::WindEstimatorNode(std::string ns, double dt): nh_(ns), 
+WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh_(ns), 
     filter_initialized_(false),
     imu_received_(false), odom_received_(false), so3cmd_received_(false), motorpwm_received_(false), vbat_received_(false),
-    estimator_(dt, 0.040, 9.81, 3.49e-08, 2.097e-6, 1.339e-5, 5.74e-4)
+    estimator_(dt, mass, 9.81, 3.49e-08, 2.097e-6, 1.339e-5, 5.74e-4)
 {
     /*
     Constructor
@@ -45,10 +45,10 @@ void WindEstimatorNode::initializeFilter()
     Q = Eigen::MatrixXd::Zero(17, 17);
     Q.diagonal().segment(0, 4).setConstant(1.0);
     Q.diagonal().segment(4, 3).setConstant(0.5);
-    Q.diagonal().segment(7, 3).setConstant(0.5);
-    Q.diagonal().segment(10, 3).setConstant(0.5);
+    Q.diagonal().segment(7, 3).setConstant(0.1);
+    Q.diagonal().segment(10, 3).setConstant(0.1);
     Q.diagonal().segment(13, 3).setConstant(0.1);
-    Q.diagonal()(16) = 1.45;
+    Q.diagonal()(16) = 1e-5;
 
     // Initialize R
     R = Eigen::MatrixXd::Zero(17, 17);
@@ -57,8 +57,8 @@ void WindEstimatorNode::initializeFilter()
     R.diagonal().segment(7, 3).setConstant(0.5);
     R.diagonal().segment(10, 3).setConstant(0.01);
     double val = 0.1 * std::sqrt(100.0 / 2.0) * std::pow(0.38, 2);
-    R.diagonal().segment(13, 3).setConstant(val);
-    R.diagonal()(16) = 0.5;
+    R.diagonal().segment(13, 3).setConstant(10*val);
+    R.diagonal()(16) = 5.0;
 
     // Initialize P0
     P0 = Eigen::MatrixXd::Zero(17, 17);
@@ -152,7 +152,7 @@ void WindEstimatorNode::so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& 
     Eigen::Vector3d force(f.x, f.y, f.z);
 
     // Project force onto b3 direction (dot product)
-    cmd_thrust_ = force.dot(b3);
+    cmd_thrust_ = force.dot(b3)/estimator_.mass_;
 
     // Send measurement to estimator
     estimator_.new_observation(16, cmd_thrust_);
@@ -175,7 +175,7 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
 
     // Compute motor rpms using a mapping. In this case we can use the battery compensated model. 
     // TODO: Remove these hard coded coefficients and move them to rosparams!
-    motor_rpms_ = pwmToMotorSpeedsBatCompensated(motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RPM);
+    motor_rpms_ = pwmToMotorSpeedsBatCompensated(motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RAD_PER_SEC);
 
     // Send measurement to estimator  TODO: Note the hardcoded 1e3, please remove!!
     estimator_.new_observation(0, motor_rpms_[0]/1e3);
@@ -240,9 +240,9 @@ void WindEstimatorNode::publishWindEstimate()
     msg.m4 = x(3);
 
     // Euler angles
-    msg.roll  = x(4);
+    msg.yaw  = x(4);
     msg.pitch = x(5);
-    msg.yaw   = x(6);
+    msg.roll   = x(6);
 
     // Body rates
     msg.roll_rate  = x(7);
@@ -336,12 +336,14 @@ int main(int argc, char **argv)
     ros::NodeHandle nh("~"); // Create a NodeHandle to access parameters and namespaces
     std::string ns = ros::this_node::getNamespace(); // Get namespace of the node
 
-    // Retrieve the frequency from the parameter server, with a default value if not set.
+    // Retrieve the params from the parameter server, with a default value if not set.
     float freq;
     nh.param("estimator_freq", freq, 100.0f);
+    float mass;
+    nh.param("mass", mass, 0.040f);
 
     ROS_INFO_STREAM("Setting up wind estimator node...");
-    WindEstimatorNode wind_estimator_node(ns, 1.0/freq);
+    WindEstimatorNode wind_estimator_node(ns, 1.0/freq, mass);
 
     // Set up a timer to produce measurements at a regular rate. 
     ros::NodeHandle node_nh(ns);

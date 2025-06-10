@@ -97,6 +97,20 @@ void WindUKF::observation(const Eigen::VectorXd& x, Eigen::VectorXd& z) const
 
     z = Eigen::VectorXd::Zero(17);
 
+    // Extract Euler angles from the state
+    double psi   = x(4);  // yaw
+    double theta = x(5);  // pitch
+    double phi   = x(6);  // roll
+
+    // Compute rotation matrix from body to world (ZYX convention: R = Rz * Ry * Rx)
+    Eigen::Matrix3d R_bw;
+    R_bw = Eigen::AngleAxisd(psi,   Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(theta, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(phi,   Eigen::Vector3d::UnitX());
+
+    // Define gravity in world frame
+    Eigen::Vector3d gravity_world(0, 0, g_);
+
     // Get current motor speeds and compute sum and sum of squares for aero computations. 
     Eigen::Vector4d motor_speeds = x.segment<4>(0) * 1e3;
     double motor_speed_sum = motor_speeds.sum();
@@ -114,8 +128,8 @@ void WindUKF::observation(const Eigen::VectorXd& x, Eigen::VectorXd& z) const
         ((x(16) * 1e-8) * motor_speed_sos + 4 * kh_ * vh_squared) * Eigen::Vector3d::UnitZ()
         - motor_speed_sum * K_ * va
     );
-    z.segment<3>(13) = accel_body;
+    z.segment<3>(13) = accel_body; // - R_bw.transpose() * gravity_world;
 
     // Compute commanded thrust.
-    z(16) = (x(16) * 1e-8) * motor_speed_sos; // TODO: Get rid of the 1e-8 thrust normalizer!
+    z(16) = (x(16) * 1e-8) * motor_speed_sos / mass_; // TODO: Get rid of the 1e-8 thrust normalizer!
 }
