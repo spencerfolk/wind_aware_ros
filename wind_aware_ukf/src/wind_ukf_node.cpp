@@ -241,10 +241,16 @@ void WindEstimatorNode::publishWindEstimate()
     msg.estimate.motor_speeds.m3 = x(2)*1e3; // TODO: Get rid of hardcoded motor speed magnitude
     msg.estimate.motor_speeds.m4 = x(3)*1e3; // TODO: Get rid of hardcoded motor speed magnitude
 
-    // Euler angles
-    msg.estimate.euler_angles.x = x(6);  // roll
-    msg.estimate.euler_angles.y = x(5);  // pitch
-    msg.estimate.euler_angles.z = x(4);  // yaw
+    // Orientation
+    Eigen::AngleAxisd rollAngle(x(6), Eigen::Vector3d::UnitX());
+    Eigen::AngleAxisd pitchAngle(x(5), Eigen::Vector3d::UnitY());
+    Eigen::AngleAxisd yawAngle(x(4), Eigen::Vector3d::UnitZ());
+    Eigen::Quaterniond q = yawAngle * pitchAngle * rollAngle;
+
+    msg.estimate.orientation.x = q.x();
+    msg.estimate.orientation.y = q.y();
+    msg.estimate.orientation.z = q.z();
+    msg.estimate.orientation.w = q.w();
 
     // Body rates
     msg.estimate.body_rates.x = x(7); // roll rate
