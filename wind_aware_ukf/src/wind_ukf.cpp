@@ -7,9 +7,10 @@ WindUKF::WindUKF(
     double keta,
     double kd,
     double kz,
-    double kh
-    ) : ukf_t(17, 17), 
-    dt_(dt), mass_(mass), g_(g), keta_(keta), kd_(kd), kz_(kz), kh_(kh)
+    double kh,
+    double tau_m
+    ) : ukf_t(17, 13), 
+    dt_(dt), mass_(mass), g_(g), keta_(keta), kd_(kd), kz_(kz), kh_(kh), tau_m_(tau_m)
 {
     // Initialize UKF parameters
     // ukf.Q = Eigen::MatrixXd::Identity(16, 16) * 0.1; // Process noise covariance
@@ -21,7 +22,14 @@ WindUKF::WindUKF(
     K_(0, 0) = kd_;
     K_(1, 1) = kd_;
     K_(2, 2) = kz_;
+
+    cmd_motor_speeds_.setZero();
     
+}
+
+void WindUKF::set_cmd_motor_speeds(Eigen::Vector4d& cmd_motor_speeds)
+{
+    cmd_motor_speeds_ = cmd_motor_speeds;
 }
 
 void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) const 
@@ -73,6 +81,7 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     xdot.setZero();
 
     // Motor speeds dot = 0 (TODO: model motor dynamics if needed).
+    xdot.segment<4>(0) = (cmd_motor_speeds_ - motor_speeds) / (1e3 * tau_m_);
 
     // Rotational kinematics
     xdot(4) = std::sin(phi) / std::cos(theta) * q + std::cos(phi) / std::cos(theta) * r;        // psi dot
@@ -102,7 +111,7 @@ void WindUKF::observation(const Eigen::VectorXd& x, Eigen::VectorXd& z) const
     Measurement model: predict the measurement z from the current belief of the filter state x.
     */
 
-    z = Eigen::VectorXd::Zero(17);
+    z = Eigen::VectorXd::Zero(13);
 
     // Extract Euler angles from the state
     double psi   = x(4);  // yaw
@@ -127,16 +136,16 @@ void WindUKF::observation(const Eigen::VectorXd& x, Eigen::VectorXd& z) const
     Eigen::Vector3d va = x.segment<3>(10) - x.segment<3>(13);  // body_velocity - wind_velocity
     double vh_squared = va(0)*va(0) + va(1)*va(1);
 
-    // Copy the first 13 states directly.
-    z.segment<13>(0) = x.segment<13>(0);
+    // Copy the last 9 states
+    z.segment<9>(0) = x.segment<9>(4);
 
     // Compute accelerations (accel_x, accel_y, accel_z).
     Eigen::Vector3d accel_body = (1.0 / mass_) * (
         ((x(16) * 1e-8) * motor_speed_sos + 4 * kh_ * vh_squared) * Eigen::Vector3d::UnitZ()
         - motor_speed_sum * K_ * va
     );
-    z.segment<3>(13) = accel_body; // - R_bw.transpose() * gravity_world;
+    z.segment<3>(9) = accel_body; // - R_bw.transpose() * gravity_world;
 
     // Compute commanded thrust.
-    z(16) = (x(16) * 1e-8) * motor_speed_sos / mass_; // TODO: Get rid of the 1e-8 thrust normalizer!
+    z(12) = (x(16) * 1e-8) * motor_speed_sos / mass_; // TODO: Get rid of the 1e-8 thrust normalizer!
 }

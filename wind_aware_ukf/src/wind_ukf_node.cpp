@@ -3,7 +3,7 @@
 WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh_(ns), 
     filter_initialized_(false),
     imu_received_(false), odom_received_(false), so3cmd_received_(false), motorpwm_received_(false), vbat_received_(false),
-    estimator_(dt, mass, 9.81, 3.49e-08, 2.097e-6, 1.339e-5, 5.74e-4)
+    estimator_(dt, mass, 9.81, 3.49e-08, 2.097e-6, 1.339e-5, 5.74e-4, 0.05)
 {
     /*
     Constructor
@@ -51,14 +51,14 @@ void WindEstimatorNode::initializeFilter()
     Q.diagonal()(16) = 1e-5;
 
     // Initialize R
-    R = Eigen::MatrixXd::Zero(17, 17);
-    R.diagonal().segment(0, 4).setConstant(0.75);
-    R.diagonal().segment(4, 3).setConstant(0.010);
-    R.diagonal().segment(7, 3).setConstant(0.5);
-    R.diagonal().segment(10, 3).setConstant(0.01);
+    R = Eigen::MatrixXd::Zero(13, 13);
+    // R.diagonal().segment(0, 4).setConstant(0.75);
+    R.diagonal().segment(0, 3).setConstant(0.010);
+    R.diagonal().segment(3, 3).setConstant(0.5);
+    R.diagonal().segment(6, 3).setConstant(0.01);
     double val = 0.1 * std::sqrt(100.0 / 2.0) * std::pow(0.38, 2);
-    R.diagonal().segment(13, 3).setConstant(10*val);
-    R.diagonal()(16) = 5.0;
+    R.diagonal().segment(9, 3).setConstant(10*val);
+    R.diagonal()(12) = 5.0;
 
     // Initialize P0
     P0 = Eigen::MatrixXd::Zero(17, 17);
@@ -86,12 +86,12 @@ void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
     imu_received_ = true;
 
     // Send measurements to estimator
-    estimator_.new_observation(7, angular_velocity_[0]);
-    estimator_.new_observation(8, angular_velocity_[1]);
-    estimator_.new_observation(9, angular_velocity_[2]);
-    estimator_.new_observation(13, linear_acceleration_[0]);
-    estimator_.new_observation(14, linear_acceleration_[1]);
-    estimator_.new_observation(15, linear_acceleration_[2]);
+    estimator_.new_observation(3, angular_velocity_[0]);
+    estimator_.new_observation(4, angular_velocity_[1]);
+    estimator_.new_observation(5, angular_velocity_[2]);
+    estimator_.new_observation(9, linear_acceleration_[0]);
+    estimator_.new_observation(10, linear_acceleration_[1]);
+    estimator_.new_observation(11, linear_acceleration_[2]);
 
     // ROS_INFO_STREAM("imu_acc: " << linear_acceleration_.x() << "\t" << linear_acceleration_.y() << "\t" << linear_acceleration_.z());
 }
@@ -120,12 +120,12 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     Eigen::Vector3d ground_velocity_body = orientation_.inverse() * ground_velocity_;
 
     // Send measurements to estimator. 
-    estimator_.new_observation(4, euler[0]); // yaw
-    estimator_.new_observation(5, euler[1]); // pitch
-    estimator_.new_observation(6, euler[2]); // roll
-    estimator_.new_observation(10, ground_velocity_body.x());
-    estimator_.new_observation(11, ground_velocity_body.y());
-    estimator_.new_observation(12, ground_velocity_body.z());
+    estimator_.new_observation(0, euler[0]); // yaw
+    estimator_.new_observation(1, euler[1]); // pitch
+    estimator_.new_observation(2, euler[2]); // roll
+    estimator_.new_observation(6, ground_velocity_body.x());
+    estimator_.new_observation(7, ground_velocity_body.y());
+    estimator_.new_observation(8, ground_velocity_body.z());
 
     odom_received_ = true;
 
@@ -155,7 +155,7 @@ void WindEstimatorNode::so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& 
     cmd_thrust_ = force.dot(b3)/estimator_.mass_;
 
     // Send measurement to estimator
-    estimator_.new_observation(16, cmd_thrust_);
+    estimator_.new_observation(12, cmd_thrust_);
 
     so3cmd_received_ = true;
 
@@ -177,11 +177,13 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
     // TODO: Remove these hard coded coefficients and move them to rosparams!
     motor_rpms_ = pwmToMotorSpeedsBatCompensated(motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RAD_PER_SEC);
 
-    // Send measurement to estimator  TODO: Note the hardcoded 1e3, please remove!!
-    estimator_.new_observation(0, motor_rpms_[0]/1e3);
-    estimator_.new_observation(1, motor_rpms_[1]/1e3);
-    estimator_.new_observation(2, motor_rpms_[2]/1e3);
-    estimator_.new_observation(3, motor_rpms_[3]/1e3);
+    // // Send measurement to estimator  TODO: Note the hardcoded 1e3, please remove!!
+    // estimator_.new_observation(0, motor_rpms_[0]/1e3);
+    // estimator_.new_observation(1, motor_rpms_[1]/1e3);
+    // estimator_.new_observation(2, motor_rpms_[2]/1e3);
+    // estimator_.new_observation(3, motor_rpms_[3]/1e3);
+
+    estimator_.set_cmd_motor_speeds(motor_rpms_);
 
     motorpwm_received_ = true;
 
