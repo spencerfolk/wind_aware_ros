@@ -39,7 +39,7 @@ generate_messages(
 )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs roscpp sensor_msgs std_msgs
+  CATKIN_DEPENDS geometry_msgs roscpp sensor_msgs std_msgs kr_mav_msgs crazyflie_driver message_runtime
 )
 
 ###########
@@ -54,7 +54,9 @@ include_directories(
 )
 
 ## Declare a C++ executable
-add_executable(wind_aware_ukf_node src/wind_ukf_node.cpp src/wind_ukf)
+add_executable(wind_aware_ukf_node src/wind_ukf_node.cpp src/wind_ukf.cpp)
+
+add_dependencies(wind_aware_ukf_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link against
 target_link_libraries(wind_aware_ukf_node
