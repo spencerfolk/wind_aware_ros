@@ -252,14 +252,18 @@ void WindEstimatorNode::publishWindEstimate()
     msg.estimate.body_rates.z = x(9); // yaw rate
 
     // Ground velocities
-    msg.estimate.ground_velocity.x = x(10);
-    msg.estimate.ground_velocity.y = x(11);
-    msg.estimate.ground_velocity.z = x(12);
+    Eigen::Vector3d ground_velocity_body(x(10), x(11), x(12));
+    Eigen::Vector3d ground_velocity_world = orientation_* ground_velocity_body;
+    msg.estimate.ground_velocity.x = ground_velocity_world.x();
+    msg.estimate.ground_velocity.y = ground_velocity_world.y();
+    msg.estimate.ground_velocity.z = ground_velocity_world.z();
 
     // Wind estimates
-    msg.estimate.wind_velocity.x = x(13);
-    msg.estimate.wind_velocity.y = x(14);
-    msg.estimate.wind_velocity.z = x(15);
+    Eigen::Vector3d wind_velocity_body(x(13), x(14), x(15));
+    Eigen::Vector3d wind_velocity_world = orientation_* wind_velocity_body;
+    msg.estimate.wind_velocity.x = wind_velocity_world.x();
+    msg.estimate.wind_velocity.y = wind_velocity_world.y();
+    msg.estimate.wind_velocity.z = wind_velocity_world.z();
 
     // Normalized thrust coefficient
     msg.estimate.thrust_coeff_norm = x(16);
@@ -318,16 +322,17 @@ void WindEstimatorNode::publishWindVector()
 
     // Wind vector
     const Eigen::VectorXd& x = estimator_.get_state();
-    double wind_vx = x(13);
-    double wind_vy = x(14);
-    double wind_vz = x(15);
+    Eigen::Vector3d wind_velocity_body(x(13), x(14), x(15));
+
+    // Rotate to world frame using orientation_
+    Eigen::Vector3d wind_velocity_world = orientation_ * wind_velocity_body;
 
     // Points for the arrow: start at origin, end at wind vector tip
     geometry_msgs::Point start, end;
     start.x = start.y = start.z = 0.0;
-    end.x = wind_vx;
-    end.y = wind_vy;
-    end.z = wind_vz;
+    end.x = wind_velocity_world.x();
+    end.y = wind_velocity_world.y();
+    end.z = wind_velocity_world.z();
 
     marker.points.push_back(start);
     marker.points.push_back(end);
