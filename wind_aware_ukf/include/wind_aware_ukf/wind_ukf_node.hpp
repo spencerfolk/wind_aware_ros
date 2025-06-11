@@ -59,6 +59,12 @@ private:
     double vbat_;
     double cmd_thrust_;
 
+    // Acceleration Estimation from Motion Capture
+    Eigen::Vector3d odom_acceleration_;
+    Eigen::Vector3d prev_ground_velocity_;
+    ros::Time prev_velocity_time_;
+
+    // IMU Calibration
     Eigen::Vector3d linear_acceleration_bias_;
     Eigen::Vector3d linear_acceleration_bias_sum_;
     double calibration_count_;

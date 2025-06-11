@@ -53,16 +53,16 @@ void WindEstimatorNode::initializeFilter()
     Q.diagonal().segment(4, 3).setConstant(0.5);        // Euler angles
     Q.diagonal().segment(7, 3).setConstant(0.1);        // body rates
     Q.diagonal().segment(10, 3).setConstant(0.1);       // Ground velocity (body frame)
-    Q.diagonal().segment(13, 3).setConstant(0.1);       // Wind velocity (body frame)
-    Q.diagonal()(16) = 1e-5;                            // Thrust coefficient normalized
+    Q.diagonal().segment(13, 3).setConstant(5e-2);       // Wind velocity (body frame)
+    Q.diagonal()(16) = 1e-3;                            // Thrust coefficient normalized
 
     // Initialize R
     R = Eigen::MatrixXd::Zero(13, 13);
     R.diagonal().segment(0, 3).setConstant(0.010);                  // Euler angles
     R.diagonal().segment(3, 3).setConstant(0.5);                    // Body rates
     R.diagonal().segment(6, 3).setConstant(0.01);                   // Ground velocity 
-    double val = 0.1 * std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
-    R.diagonal().segment(9, 3).setConstant(10*val);                 // Accelerometer
+    double val =  std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
+    R.diagonal().segment(9, 3).setConstant(5*val);                 // Accelerometer
     R.diagonal()(12) = 10.0;                                         // Command thrust
 
     // Initialize P0
@@ -120,9 +120,9 @@ void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
         estimator_.new_observation(3, angular_velocity_[0]);
         estimator_.new_observation(4, angular_velocity_[1]);
         estimator_.new_observation(5, angular_velocity_[2]);
-        estimator_.new_observation(9, linear_acceleration_[0]);
-        estimator_.new_observation(10, linear_acceleration_[1]);
-        estimator_.new_observation(11, linear_acceleration_[2]);
+        // estimator_.new_observation(9, linear_acceleration_[0]);
+        // estimator_.new_observation(10, linear_acceleration_[1]);
+        // estimator_.new_observation(11, linear_acceleration_[2]);
 
         imu_received_ = true;
 
@@ -154,6 +154,36 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     // Convert ground velocity to body frame. 
     Eigen::Vector3d ground_velocity_body = orientation_.inverse() * ground_velocity_;
 
+    // Calculate acceleration using finite differencing. 
+    ros::Time current_time = msg->header.stamp;
+    double dt = (current_time - prev_velocity_time_).toSec();
+
+    if (odom_received_ && dt > 1e-5)  // avoid divide-by-zero on first callback
+    {
+        odom_acceleration_ = (ground_velocity_ - prev_ground_velocity_) / dt;
+
+        // Add gravity acceleration. 
+        odom_acceleration_.z() += estimator_.g_;
+
+    } else {
+        odom_acceleration_.x() = 0.0;
+        odom_acceleration_.y() = 0.0;
+        odom_acceleration_.z() = estimator_.g_;
+    }
+
+    odom_acceleration_ = orientation_.inverse() * odom_acceleration_;
+
+    double min_val = -5.0;
+    double max_val = 5.0;
+
+    for (int i = 0; i < 3; ++i) {
+        odom_acceleration_[i] = std::max(min_val, std::min(odom_acceleration_[i], max_val));
+    }
+
+    // Store current velocity and time for next iteration
+    prev_ground_velocity_ = ground_velocity_;
+    prev_velocity_time_ = current_time;
+
     // Send measurements to estimator. 
     estimator_.new_observation(0, euler[0]); // yaw
     estimator_.new_observation(1, euler[1]); // pitch
@@ -161,6 +191,9 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     estimator_.new_observation(6, ground_velocity_body.x());
     estimator_.new_observation(7, ground_velocity_body.y());
     estimator_.new_observation(8, ground_velocity_body.z());
+    estimator_.new_observation(9, odom_acceleration_.x());
+    estimator_.new_observation(10, odom_acceleration_.y());
+    estimator_.new_observation(11, odom_acceleration_.z());
 
     odom_received_ = true;
 
@@ -375,6 +408,9 @@ void WindEstimatorNode::publishWindVector()
     end.x = wind_velocity_body.x();
     end.y = wind_velocity_body.y();
     end.z = wind_velocity_body.z();
+    // end.x = odom_acceleration_.x()/estimator_.g_;
+    // end.y = odom_acceleration_.y()/estimator_.g_;
+    // end.z = odom_acceleration_.z()/estimator_.g_;
 
     marker.points.push_back(start);
     marker.points.push_back(end);
