@@ -48,6 +48,10 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     double vz = body_velocity(2); // z ground velocity (in body frame)
 
     Eigen::Vector3d wind_velocity = xp.segment<3>(13);
+    double wx = wind_velocity(0);
+    double wy = wind_velocity(1);
+    double wz = wind_velocity(2);
+
     double thrust_coeff_norm = xp(16); // thrust coefficient (normalized to the order of 10^0)
 
     // Compute airspeed vector by subtracting body velocity from wind velocity.
@@ -82,7 +86,10 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     xdot(11) = Fy / mass_ + p * vz - r * vx; // vy dot (in body frame)
     xdot(12) = Fz / mass_ + q * vx - p * vy; // vz dot (in body frame)
 
-    // Wind and thrust coefficient dynamics = 0.
+    // Wind dynamics in the body frame
+    xdot(13) = - (q * wz - r * wy); // v_wx dot
+    xdot(14) = - (r * wx - p * wz); // v_wy dot
+    xdot(15) = - (p * wy - q * wx); // v_wz dot
 
     // Euler forward integration.
     x = xp + dt_ * xdot;
