@@ -21,6 +21,12 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
 
+    linear_acceleration_bias_.setZero();
+    calibration_count_ = 0;
+    calibration_count_thresh_ = 50;
+    velocity_thresh_ = 0.1;
+    acc_thresh_ = 0.75;
+    
 }
 
 void WindEstimatorNode::initializeFilter()
@@ -57,7 +63,7 @@ void WindEstimatorNode::initializeFilter()
     R.diagonal().segment(6, 3).setConstant(0.01);                   // Ground velocity 
     double val = 0.1 * std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
     R.diagonal().segment(9, 3).setConstant(10*val);                 // Accelerometer
-    R.diagonal()(12) = 1.0;                                         // Command thrust
+    R.diagonal()(12) = 10.0;                                         // Command thrust
 
     // Initialize P0
     P0 = Eigen::MatrixXd::Zero(17, 17);
@@ -83,15 +89,44 @@ void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
     linear_acceleration_ << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
     angular_velocity_ << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
 
-    imu_received_ = true;
+    if(calibration_count_ <= calibration_count_thresh_)
+    {
 
-    // Send measurements to estimator
-    estimator_.new_observation(3, angular_velocity_[0]);
-    estimator_.new_observation(4, angular_velocity_[1]);
-    estimator_.new_observation(5, angular_velocity_[2]);
-    estimator_.new_observation(9, linear_acceleration_[0]);
-    estimator_.new_observation(10, linear_acceleration_[1]);
-    estimator_.new_observation(11, linear_acceleration_[2]);
+        if ((ground_velocity_.norm() <= velocity_thresh_) && ((linear_acceleration_.norm() - estimator_.g_) <= acc_thresh_) && (cmd_thrust_ > 0.05))
+        {
+            ROS_INFO_STREAM("Accelerometer calibration step " << calibration_count_ << " out of " << calibration_count_thresh_);
+
+            // Accumulate accelerometer samples to estimate bias
+            linear_acceleration_.z() -= estimator_.g_;  // Subtract off gravity in the z axis (ONLY DURING CALIBRATION)
+            linear_acceleration_bias_sum_ += linear_acceleration_;
+            calibration_count_++;
+
+            // Update average bias
+            if (calibration_count_ > 0) // prevent div 0 error
+            {
+                linear_acceleration_bias_ = linear_acceleration_bias_sum_ / calibration_count_;
+            }
+        }
+    } else { // Calibrated!
+
+        if (!imu_received_)
+        {
+            ROS_INFO_STREAM("Accelerometer calibrated. bias = " << linear_acceleration_bias_.transpose() );
+        }
+        // Apply bias correction before sending to estimator
+        linear_acceleration_ -= linear_acceleration_bias_;
+
+        // Send measurements to estimator
+        estimator_.new_observation(3, angular_velocity_[0]);
+        estimator_.new_observation(4, angular_velocity_[1]);
+        estimator_.new_observation(5, angular_velocity_[2]);
+        estimator_.new_observation(9, linear_acceleration_[0]);
+        estimator_.new_observation(10, linear_acceleration_[1]);
+        estimator_.new_observation(11, linear_acceleration_[2]);
+
+        imu_received_ = true;
+
+    } 
 
     // ROS_INFO_STREAM("imu_acc: " << linear_acceleration_.x() << "\t" << linear_acceleration_.y() << "\t" << linear_acceleration_.z());
 }
@@ -207,16 +242,20 @@ void WindEstimatorNode::run(const ros::TimerEvent&)
     /*
     Main loop of the wind estimator. 
     */
-    if(filter_initialized_){ // If filter is ready...
+    if(filter_initialized_) // If filter is ready...
+    {
         estimator_.iterate();
         publishWindEstimate();
         publishWindVector();
-    }else{ // Set filter initialization only when all sensors are available. 
-        if(imu_received_ & odom_received_ & so3cmd_received_ & motorpwm_received_ & vbat_received_){
+    } else 
+    { // Set filter initialization only when all sensors are available. 
+        if(imu_received_ & odom_received_ & so3cmd_received_ & motorpwm_received_ & vbat_received_)
+        {
             initializeFilter();
             filter_initialized_ = true;
         }
     }
+    publishWindVector();
 }
 
 void WindEstimatorNode::publishWindEstimate()
@@ -330,15 +369,12 @@ void WindEstimatorNode::publishWindVector()
     const Eigen::VectorXd& x = estimator_.get_state();
     Eigen::Vector3d wind_velocity_body(x(13), x(14), x(15));
 
-    // Rotate to world frame using orientation_
-    Eigen::Vector3d wind_velocity_world = orientation_ * wind_velocity_body;
-
     // Points for the arrow: start at origin, end at wind vector tip
     geometry_msgs::Point start, end;
     start.x = start.y = start.z = 0.0;
-    end.x = wind_velocity_world.x();
-    end.y = wind_velocity_world.y();
-    end.z = wind_velocity_world.z();
+    end.x = wind_velocity_body.x();
+    end.y = wind_velocity_body.y();
+    end.z = wind_velocity_body.z();
 
     marker.points.push_back(start);
     marker.points.push_back(end);

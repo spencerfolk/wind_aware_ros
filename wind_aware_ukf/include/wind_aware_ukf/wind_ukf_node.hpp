@@ -59,6 +59,13 @@ private:
     double vbat_;
     double cmd_thrust_;
 
+    Eigen::Vector3d linear_acceleration_bias_;
+    Eigen::Vector3d linear_acceleration_bias_sum_;
+    double calibration_count_;
+    double calibration_count_thresh_;
+    double velocity_thresh_;
+    double acc_thresh_;
+
     // ROS and robot variables
     ros::NodeHandle nh_;
     
