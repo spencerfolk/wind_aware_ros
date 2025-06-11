@@ -96,9 +96,9 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     xdot(12) = Fz / mass_ - (p * vy - q * vx); // vz dot (in body frame)
 
     // Wind dynamics in the body frame
-    xdot(13) = (q * wz - r * wy); // v_wx dot
-    xdot(14) = (r * wx - p * wz); // v_wy dot
-    xdot(15) = (p * wy - q * wx); // v_wz dot
+    xdot(13) = - (q * wz - r * wy); // v_wx dot
+    xdot(14) = - (r * wx - p * wz); // v_wy dot
+    xdot(15) = - (p * wy - q * wx); // v_wz dot
 
     // Euler forward integration.
     x = xp + dt_ * xdot;
