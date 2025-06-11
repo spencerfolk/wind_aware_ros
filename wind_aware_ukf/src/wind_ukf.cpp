@@ -77,7 +77,7 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
                 + (thrust_coeff_norm * 1e-8) * motor_speed_sos + 4 * kh_ * vh_squared; // TODO: Get rid of hard coded 1e-8 normalizer
 
     // xdot vector
-    Eigen::VectorXd xdot(17);
+    Eigen::VectorXd xdot(20);
     xdot.setZero();
 
     // Motor speeds dot = 0 (TODO: model motor dynamics if needed).

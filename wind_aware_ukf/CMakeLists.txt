@@ -27,8 +27,9 @@ find_package(Eigen3 REQUIRED)
 ###################################
 add_message_files(
   FILES
+  MotorSpeeds.msg
   WindEstimate.msg
-  WindEstimateFullState.msg
+  WindEstimateStamped.msg
 )
 
 generate_messages(

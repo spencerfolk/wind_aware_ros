@@ -10,7 +10,7 @@
 #include <visualization_msgs/Marker.h>
 #include <kr_mav_msgs/SO3Command.h>
 #include <crazyflie_driver/GenericLogData.h>
-#include <wind_aware_ukf/WindEstimateFullState.h>
+#include <wind_aware_ukf/WindEstimateStamped.h>
 
 #include <Eigen/Dense>
 

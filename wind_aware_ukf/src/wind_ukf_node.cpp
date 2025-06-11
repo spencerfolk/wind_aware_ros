@@ -18,7 +18,7 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh
     motorpwm_sub_ = nh_.subscribe("motor_pwms", 1, &WindEstimatorNode::motorpwmCallback, this);
     vbat_sub_ = nh_.subscribe("ina_voltage", 1, &WindEstimatorNode::vbatCallback, this);
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
-    wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateFullState>("wind_estimate", 1);
+    wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
 
 }
@@ -43,27 +43,27 @@ void WindEstimatorNode::initializeFilter()
 
     // Initialize Q
     Q = Eigen::MatrixXd::Zero(17, 17);
-    Q.diagonal().segment(0, 4).setConstant(1.0);
-    Q.diagonal().segment(4, 3).setConstant(0.5);
-    Q.diagonal().segment(7, 3).setConstant(0.1);
-    Q.diagonal().segment(10, 3).setConstant(0.1);
-    Q.diagonal().segment(13, 3).setConstant(0.1);
-    Q.diagonal()(16) = 1e-5;
+    Q.diagonal().segment(0, 4).setConstant(1.0);        // Motor speeds
+    Q.diagonal().segment(4, 3).setConstant(0.5);        // Euler angles
+    Q.diagonal().segment(7, 3).setConstant(0.1);        // body rates
+    Q.diagonal().segment(10, 3).setConstant(0.1);       // Ground velocity (body frame)
+    Q.diagonal().segment(13, 3).setConstant(0.1);       // Wind velocity (body frame)
+    Q.diagonal()(16) = 1e-5;                            // Thrust coefficient normalized
 
     // Initialize R
     R = Eigen::MatrixXd::Zero(13, 13);
-    // R.diagonal().segment(0, 4).setConstant(0.75);
-    R.diagonal().segment(0, 3).setConstant(0.010);
-    R.diagonal().segment(3, 3).setConstant(0.5);
-    R.diagonal().segment(6, 3).setConstant(0.01);
-    double val = 0.1 * std::sqrt(100.0 / 2.0) * std::pow(0.38, 2);
-    R.diagonal().segment(9, 3).setConstant(10*val);
-    R.diagonal()(12) = 5.0;
+    R.diagonal().segment(0, 3).setConstant(0.010);                  // Euler angles
+    R.diagonal().segment(3, 3).setConstant(0.5);                    // Body rates
+    R.diagonal().segment(6, 3).setConstant(0.01);                   // Ground velocity 
+    double val = 0.1 * std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
+    R.diagonal().segment(9, 3).setConstant(10*val);                 // Accelerometer
+    R.diagonal()(12) = 1.0;                                         // Command thrust
 
     // Initialize P0
     P0 = Eigen::MatrixXd::Zero(17, 17);
-    P0.diagonal().segment(0, 4).setConstant(2.5);
-    P0.diagonal().segment(4, 13).setConstant(0.5);
+    P0.diagonal().segment(0, 4).setConstant(2.5);       // Motor speeds
+    P0.diagonal().segment(4, 13).setConstant(0.5);      // All other states
+    P0.diagonal()(16) = 1e-3;                           // Thrust coeff norm
 
     // Initialize weight spread param. 
     estimator_.wo = 0.5;  // A little more conservative
@@ -152,10 +152,10 @@ void WindEstimatorNode::so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& 
     Eigen::Vector3d force(f.x, f.y, f.z);
 
     // Project force onto b3 direction (dot product)
-    cmd_thrust_ = force.dot(b3)/estimator_.mass_;
+    cmd_thrust_ = force.dot(b3);
 
     // Send measurement to estimator
-    estimator_.new_observation(12, cmd_thrust_);
+    estimator_.new_observation(12, cmd_thrust_/estimator_.mass_);
 
     so3cmd_received_ = true;
 
@@ -225,7 +225,7 @@ void WindEstimatorNode::publishWindEstimate()
     Publish the full wind estimate over ROS
     */
 
-    wind_aware_ukf::WindEstimateFullState msg; 
+    wind_aware_ukf::WindEstimateStamped msg; 
     
     // Set header
     msg.header.stamp = ros::Time::now();
@@ -236,33 +236,38 @@ void WindEstimatorNode::publishWindEstimate()
     const Eigen::MatrixXd& P = estimator_.get_covariance();
 
     // Motor speeds
-    msg.m1 = x(0);
-    msg.m2 = x(1);
-    msg.m3 = x(2);
-    msg.m4 = x(3);
+    msg.estimate.motor_speeds.m1 = x(0)*1e3; // TODO: Get rid of hardcoded motor speed magnitude
+    msg.estimate.motor_speeds.m2 = x(1)*1e3; // TODO: Get rid of hardcoded motor speed magnitude
+    msg.estimate.motor_speeds.m3 = x(2)*1e3; // TODO: Get rid of hardcoded motor speed magnitude
+    msg.estimate.motor_speeds.m4 = x(3)*1e3; // TODO: Get rid of hardcoded motor speed magnitude
 
     // Euler angles
-    msg.yaw  = x(4);
-    msg.pitch = x(5);
-    msg.roll   = x(6);
+    msg.estimate.euler_angles.x = x(6);  // roll
+    msg.estimate.euler_angles.y = x(5);  // pitch
+    msg.estimate.euler_angles.z = x(4);  // yaw
 
     // Body rates
-    msg.roll_rate  = x(7);
-    msg.pitch_rate = x(8);
-    msg.yaw_rate   = x(9);
+    msg.estimate.body_rates.x = x(7); // roll rate
+    msg.estimate.body_rates.y = x(8); // pitch rate
+    msg.estimate.body_rates.z = x(9); // yaw rate
 
     // Ground velocities
-    msg.ground_vx = x(10);
-    msg.ground_vy = x(11);
-    msg.ground_vz = x(12);
+    msg.estimate.ground_velocity.x = x(10);
+    msg.estimate.ground_velocity.y = x(11);
+    msg.estimate.ground_velocity.z = x(12);
 
     // Wind estimates
-    msg.wind_vx = x(13);
-    msg.wind_vy = x(14);
-    msg.wind_vz = x(15);
+    msg.estimate.wind_velocity.x = x(13);
+    msg.estimate.wind_velocity.y = x(14);
+    msg.estimate.wind_velocity.z = x(15);
 
     // Normalized thrust coefficient
-    msg.thrust_coeff_norm = x(16);
+    msg.estimate.thrust_coeff_norm = x(16);
+
+    // Accel bias
+    // msg.estimate.accel_bias.x = x(17);
+    // msg.estimate.accel_bias.y = x(18);
+    // msg.estimate.accel_bias.z = x(19);
 
     // Flatten covariance matrix
     msg.covariance.reserve(P.rows() * P.cols());
