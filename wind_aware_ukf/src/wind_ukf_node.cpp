@@ -20,6 +20,7 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
+    accel_vector_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("accel_vector_marker", 1);
 
     linear_acceleration_bias_.setZero();
     calibration_count_ = 0;
@@ -39,37 +40,33 @@ void WindEstimatorNode::initializeFilter()
     // TODO: Remove these hardcoded values. 
 
     // Initialize x0
-    x0 = Eigen::VectorXd::Zero(17);
-    x0.segment<4>(0)  = motor_rpms_;
+    x0 = Eigen::VectorXd::Zero(16);
+    x0.segment<4>(0)  = cmd_motor_speeds_;
     x0.segment<3>(4)  = orientation_.toRotationMatrix().eulerAngles(2, 1, 0);
     x0.segment<3>(7)  = angular_velocity_;
     x0.segment<3>(10) = ground_velocity_;
     x0.segment<3>(13) = Eigen::Vector3d::Constant(1e-5);
-    x0(16) = estimator_.keta_ / 1e-8;
 
     // Initialize Q
-    Q = Eigen::MatrixXd::Zero(17, 17);
-    Q.diagonal().segment(0, 4).setConstant(1.0);        // Motor speeds
+    Q = Eigen::MatrixXd::Zero(16, 16);
+    Q.diagonal().segment(0, 4).setConstant(1e-5);        // Motor speeds
     Q.diagonal().segment(4, 3).setConstant(0.5);        // Euler angles
     Q.diagonal().segment(7, 3).setConstant(0.1);        // body rates
     Q.diagonal().segment(10, 3).setConstant(0.1);       // Ground velocity (body frame)
     Q.diagonal().segment(13, 3).setConstant(5e-2);       // Wind velocity (body frame)
-    Q.diagonal()(16) = 1e-3;                            // Thrust coefficient normalized
 
     // Initialize R
-    R = Eigen::MatrixXd::Zero(13, 13);
+    R = Eigen::MatrixXd::Zero(12, 12);
     R.diagonal().segment(0, 3).setConstant(0.010);                  // Euler angles
     R.diagonal().segment(3, 3).setConstant(0.5);                    // Body rates
     R.diagonal().segment(6, 3).setConstant(0.01);                   // Ground velocity 
     double val =  std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
-    R.diagonal().segment(9, 3).setConstant(5*val);                 // Accelerometer
-    R.diagonal()(12) = 10.0;                                         // Command thrust
+    R.diagonal().segment(9, 3).setConstant(10*val);                 // Accelerometer
 
     // Initialize P0
-    P0 = Eigen::MatrixXd::Zero(17, 17);
+    P0 = Eigen::MatrixXd::Zero(16, 16);
     P0.diagonal().segment(0, 4).setConstant(2.5);       // Motor speeds
-    P0.diagonal().segment(4, 13).setConstant(0.5);      // All other states
-    P0.diagonal()(16) = 1e-3;                           // Thrust coeff norm
+    P0.diagonal().segment(4, 12).setConstant(0.5);      // All other states
 
     // Initialize weight spread param. 
     estimator_.wo = 0.5;  // A little more conservative
@@ -89,44 +86,12 @@ void WindEstimatorNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
     linear_acceleration_ << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
     angular_velocity_ << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
 
-    if(calibration_count_ <= calibration_count_thresh_)
-    {
+    // Send measurements to estimator
+    estimator_.new_observation(3, angular_velocity_[0]);
+    estimator_.new_observation(4, angular_velocity_[1]);
+    estimator_.new_observation(5, angular_velocity_[2]);
 
-        if ((ground_velocity_.norm() <= velocity_thresh_) && ((linear_acceleration_.norm() - estimator_.g_) <= acc_thresh_) && (cmd_thrust_ > 0.05))
-        {
-            ROS_INFO_STREAM("Accelerometer calibration step " << calibration_count_ << " out of " << calibration_count_thresh_);
-
-            // Accumulate accelerometer samples to estimate bias
-            linear_acceleration_.z() -= estimator_.g_;  // Subtract off gravity in the z axis (ONLY DURING CALIBRATION)
-            linear_acceleration_bias_sum_ += linear_acceleration_;
-            calibration_count_++;
-
-            // Update average bias
-            if (calibration_count_ > 0) // prevent div 0 error
-            {
-                linear_acceleration_bias_ = linear_acceleration_bias_sum_ / calibration_count_;
-            }
-        }
-    } else { // Calibrated!
-
-        if (!imu_received_)
-        {
-            ROS_INFO_STREAM("Accelerometer calibrated. bias = " << linear_acceleration_bias_.transpose() );
-        }
-        // Apply bias correction before sending to estimator
-        linear_acceleration_ -= linear_acceleration_bias_;
-
-        // Send measurements to estimator
-        estimator_.new_observation(3, angular_velocity_[0]);
-        estimator_.new_observation(4, angular_velocity_[1]);
-        estimator_.new_observation(5, angular_velocity_[2]);
-        // estimator_.new_observation(9, linear_acceleration_[0]);
-        // estimator_.new_observation(10, linear_acceleration_[1]);
-        // estimator_.new_observation(11, linear_acceleration_[2]);
-
-        imu_received_ = true;
-
-    } 
+    imu_received_ = true;
 
     // ROS_INFO_STREAM("imu_acc: " << linear_acceleration_.x() << "\t" << linear_acceleration_.y() << "\t" << linear_acceleration_.z());
 }
@@ -222,8 +187,8 @@ void WindEstimatorNode::so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& 
     // Project force onto b3 direction (dot product)
     cmd_thrust_ = force.dot(b3);
 
-    // Send measurement to estimator
-    estimator_.new_observation(12, cmd_thrust_/estimator_.mass_);
+    // // Send measurement to estimator
+    // estimator_.new_observation(12, cmd_thrust_/estimator_.mass_);
 
     so3cmd_received_ = true;
 
@@ -236,26 +201,26 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
     Process motor pwms 
     */
 
-    motor_pwms_ <<  static_cast<double>(msg->values[0]),
+    cmd_motor_pwms_ <<  static_cast<double>(msg->values[0]),
                     static_cast<double>(msg->values[1]),
                     static_cast<double>(msg->values[2]),
                     static_cast<double>(msg->values[3]);
 
     // Compute motor rpms using a mapping. In this case we can use the battery compensated model. 
     // TODO: Remove these hard coded coefficients and move them to rosparams!
-    motor_rpms_ = pwmToMotorSpeedsBatCompensated(motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RAD_PER_SEC);
+    cmd_motor_speeds_ = pwmToMotorSpeedsBatCompensated(cmd_motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RAD_PER_SEC);
 
     // // Send measurement to estimator  TODO: Note the hardcoded 1e3, please remove!!
-    // estimator_.new_observation(0, motor_rpms_[0]/1e3);
-    // estimator_.new_observation(1, motor_rpms_[1]/1e3);
-    // estimator_.new_observation(2, motor_rpms_[2]/1e3);
-    // estimator_.new_observation(3, motor_rpms_[3]/1e3);
+    // estimator_.new_observation(0, cmd_motor_speeds_[0]/1e3);
+    // estimator_.new_observation(1, cmd_motor_speeds_[1]/1e3);
+    // estimator_.new_observation(2, cmd_motor_speeds_[2]/1e3);
+    // estimator_.new_observation(3, cmd_motor_speeds_[3]/1e3);
 
-    estimator_.set_cmd_motor_speeds(motor_rpms_);
+    estimator_.set_cmd_motor_speeds(cmd_motor_speeds_);
 
     motorpwm_received_ = true;
 
-    // ROS_INFO_STREAM("motor_rpms: " << motor_rpms_[0] << "\t" << motor_rpms_[1] << "\t" << motor_rpms_[2] << "\t" << motor_rpms_[3]);
+    // ROS_INFO_STREAM("motor_rpms: " << cmd_motor_speeds_[0] << "\t" << cmd_motor_speeds_[1] << "\t" << cmd_motor_speeds_[2] << "\t" << cmd_motor_speeds_[3]);
 }
 
 void WindEstimatorNode::vbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg) 
@@ -289,6 +254,7 @@ void WindEstimatorNode::run(const ros::TimerEvent&)
         }
     }
     publishWindVector();
+    publishImuVector();
 }
 
 void WindEstimatorNode::publishWindEstimate()
@@ -344,12 +310,7 @@ void WindEstimatorNode::publishWindEstimate()
     msg.estimate.wind_velocity.z = wind_velocity_world.z();
 
     // Normalized thrust coefficient
-    msg.estimate.thrust_coeff_norm = x(16);
-
-    // Accel bias
-    // msg.estimate.accel_bias.x = x(17);
-    // msg.estimate.accel_bias.y = x(18);
-    // msg.estimate.accel_bias.z = x(19);
+    msg.estimate.thrust_coeff_norm = estimator_.keta_;
 
     // Flatten covariance matrix
     msg.covariance.reserve(P.rows() * P.cols());
@@ -408,15 +369,63 @@ void WindEstimatorNode::publishWindVector()
     end.x = wind_velocity_body.x();
     end.y = wind_velocity_body.y();
     end.z = wind_velocity_body.z();
-    // end.x = odom_acceleration_.x()/estimator_.g_;
-    // end.y = odom_acceleration_.y()/estimator_.g_;
-    // end.z = odom_acceleration_.z()/estimator_.g_;
 
     marker.points.push_back(start);
     marker.points.push_back(end);
 
     // Publish the marker
     wind_estimate_marker_pub_.publish(marker);
+}
+
+void WindEstimatorNode::publishImuVector()
+{
+    /*
+    Publish the acceleration vector for visualization in RViz. 
+    */
+
+    visualization_msgs::Marker marker;
+
+    // Header
+    marker.header.frame_id = mav_name_.substr(mav_name_.find('/') + 1); // Extract frame_id
+    marker.header.stamp = ros::Time::now();
+
+    // Marker settings
+    marker.ns = "acceleration_vector";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::ARROW;
+    marker.action = visualization_msgs::Marker::ADD;
+
+    // Scale
+    marker.scale.x = 0.05; // Arrow head size
+    marker.scale.y = 0.1;  // Shaft diameter
+    marker.scale.z = 0.15; // Shaft diameter
+
+    // Color
+    marker.color.a = 1.0;
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
+
+    // Orientation (identity quaternion)
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+
+    // Acceleration vector
+
+    // Points for the arrow: start at origin, end at wind vector tip
+    geometry_msgs::Point start, end;
+    start.x = start.y = start.z = 0.0;
+    end.x = odom_acceleration_.x()/estimator_.g_;
+    end.y = odom_acceleration_.y()/estimator_.g_;
+    end.z = odom_acceleration_.z()/estimator_.g_;
+
+    marker.points.push_back(start);
+    marker.points.push_back(end);
+
+    // Publish the marker
+    accel_vector_marker_pub_.publish(marker);
 }
 
 int main(int argc, char **argv)

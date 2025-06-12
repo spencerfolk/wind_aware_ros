@@ -9,7 +9,7 @@ WindUKF::WindUKF(
     double kz,
     double kh,
     double tau_m
-    ) : ukf_t(17, 13), 
+    ) : ukf_t(16, 12), 
     dt_(dt), mass_(mass), g_(g), keta_(keta), kd_(kd), kz_(kz), kh_(kh), tau_m_(tau_m)
 {
     // Initialize UKF parameters
@@ -60,8 +60,6 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     double wy = wind_velocity(1);
     double wz = wind_velocity(2);
 
-    double thrust_coeff_norm = xp(16); // thrust coefficient (normalized to the order of 10^0)
-
     // Compute airspeed vector by subtracting body velocity from wind velocity.
     Eigen::Vector3d va = body_velocity - wind_velocity;
     double vh_squared = va(0) * va(0) + va(1) * va(1);
@@ -74,10 +72,10 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     double Fx = -kd_ * motor_speed_sum * va(0) + mass_ * g_ * std::sin(theta);
     double Fy = -kd_ * motor_speed_sum * va(1) - mass_ * g_ * std::cos(theta) * std::sin(phi);
     double Fz = -kz_ * motor_speed_sum * va(2) - mass_ * g_ * std::cos(theta) * std::cos(phi)
-                + (thrust_coeff_norm * 1e-8) * motor_speed_sos + 4 * kh_ * vh_squared; // TODO: Get rid of hard coded 1e-8 normalizer
+                + keta_ * motor_speed_sos + 4 * kh_ * vh_squared;
 
     // xdot vector
-    Eigen::VectorXd xdot(20);
+    Eigen::VectorXd xdot(16);
     xdot.setZero();
 
     // Motor speeds dot = 0 (TODO: model motor dynamics if needed).
@@ -88,7 +86,7 @@ void WindUKF::state_transition(const Eigen::VectorXd& xp, Eigen::VectorXd& x) co
     xdot(5) = std::cos(phi) * q - std::sin(phi) * r;                                            // theta dot
     xdot(6) = p + std::sin(phi) * std::tan(theta) * q + std::cos(phi) * std::tan(theta) * r;    // phi dot
 
-    // Angular rates dot = 0 (TODO: model rotational dynamics).
+    // Angular rates dot = 0 (TODO: model rotational dynamics if necessary).
     
     // Translational acceleration (body frame).
     xdot(10) = Fx / mass_ - (q * vz - r * vy); // vx dot (in body frame)
@@ -111,7 +109,7 @@ void WindUKF::observation(const Eigen::VectorXd& x, Eigen::VectorXd& z) const
     Measurement model: predict the measurement z from the current belief of the filter state x.
     */
 
-    z = Eigen::VectorXd::Zero(13);
+    z = Eigen::VectorXd::Zero(12);
 
     // Extract Euler angles from the state
     double psi   = x(4);  // yaw
@@ -141,11 +139,8 @@ void WindUKF::observation(const Eigen::VectorXd& x, Eigen::VectorXd& z) const
 
     // Compute accelerations (accel_x, accel_y, accel_z).
     Eigen::Vector3d accel_body = (1.0 / mass_) * (
-        ((x(16) * 1e-8) * motor_speed_sos + 4 * kh_ * vh_squared) * Eigen::Vector3d::UnitZ()
+        (keta_ * motor_speed_sos + 4 * kh_ * vh_squared) * Eigen::Vector3d::UnitZ()
         - motor_speed_sum * K_ * va
     );
     z.segment<3>(9) = accel_body; // - R_bw.transpose() * gravity_world;
-
-    // Compute commanded thrust.
-    z(12) = (x(16) * 1e-8) * motor_speed_sos / mass_; // TODO: Get rid of the 1e-8 thrust normalizer!
 }

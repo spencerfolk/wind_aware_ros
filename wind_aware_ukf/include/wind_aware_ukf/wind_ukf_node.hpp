@@ -35,6 +35,7 @@ public:
     void initializeFilter();
     void publishWindEstimate();
     void publishWindVector();
+    void publishImuVector();
     
 private:
 
@@ -54,8 +55,8 @@ private:
     Eigen::Quaterniond orientation_;
     Eigen::Vector3d linear_acceleration_;
     Eigen::Vector3d angular_velocity_;
-    Eigen::Vector4d motor_pwms_;
-    Eigen::Vector4d motor_rpms_;
+    Eigen::Vector4d cmd_motor_pwms_;
+    Eigen::Vector4d cmd_motor_speeds_;
     double vbat_;
     double cmd_thrust_;
 
@@ -83,6 +84,7 @@ private:
 
     ros::Publisher wind_estimate_pub_;
     ros::Publisher wind_estimate_marker_pub_;
+    ros::Publisher accel_vector_marker_pub_;
 
     // tf variables
     // tf2_ros::Buffer tf_buffer_;
