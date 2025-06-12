@@ -20,6 +20,7 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
+    accel_vector_pub_ = nh_.advertise<sensor_msgs::Imu>("mocap_acceleration_vector", 1);
     accel_vector_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("accel_vector_marker", 1);
 
     linear_acceleration_bias_.setZero();
@@ -138,8 +139,8 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 
     odom_acceleration_ = orientation_.inverse() * odom_acceleration_;
 
-    double min_val = -5.0;
-    double max_val = 5.0;
+    double min_val = -15.0;
+    double max_val = 15.0;
 
     for (int i = 0; i < 3; ++i) {
         odom_acceleration_[i] = std::max(min_val, std::min(odom_acceleration_[i], max_val));
@@ -382,6 +383,18 @@ void WindEstimatorNode::publishImuVector()
     /*
     Publish the acceleration vector for visualization in RViz. 
     */
+
+    // Publish accelerometer measurement. 
+    sensor_msgs::Imu accel_msg;
+    accel_msg.header.stamp = ros::Time::now();
+    accel_msg.header.frame_id = mav_name_.substr(mav_name_.find('/') + 1); // Extract after first '/'
+
+    // msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
+    accel_msg.linear_acceleration.x = odom_acceleration_.x();
+    accel_msg.linear_acceleration.y = odom_acceleration_.y();
+    accel_msg.linear_acceleration.z = odom_acceleration_.z();
+
+    accel_vector_pub_.publish(accel_msg);
 
     visualization_msgs::Marker marker;
 

@@ -84,6 +84,7 @@ private:
 
     ros::Publisher wind_estimate_pub_;
     ros::Publisher wind_estimate_marker_pub_;
+    ros::Publisher accel_vector_pub_;
     ros::Publisher accel_vector_marker_pub_;
 
     // tf variables
