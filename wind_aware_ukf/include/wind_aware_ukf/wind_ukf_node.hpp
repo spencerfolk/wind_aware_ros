@@ -2,6 +2,7 @@
 #define WIND_UKF_NODE_HPP 
 
 #include <ros/ros.h>
+#include "std_msgs/Float32.h"
 #include <sensor_msgs/Imu.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Twist.h>
@@ -29,7 +30,8 @@ public:
     void odomCallback(const nav_msgs::Odometry::ConstPtr& msg);
     void so3cmdCallback(const kr_mav_msgs::SO3Command::ConstPtr& msg);
     void motorpwmCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg);
-    void vbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg);
+    void inaVbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg);
+    void crazyflieVbatCallback(const std_msgs::Float32::ConstPtr& msg);
 
     void run(const ros::TimerEvent&);
     void initializeFilter();

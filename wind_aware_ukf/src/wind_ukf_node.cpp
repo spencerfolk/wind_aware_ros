@@ -16,7 +16,7 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh
     imu_sub_ = nh_.subscribe("imu", 1, &WindEstimatorNode::imuCallback, this);
     odom_sub_ = nh_.subscribe("odom", 1, &WindEstimatorNode::odomCallback, this);
     motorpwm_sub_ = nh_.subscribe("motor_pwms", 1, &WindEstimatorNode::motorpwmCallback, this);
-    vbat_sub_ = nh_.subscribe("ina_voltage", 1, &WindEstimatorNode::vbatCallback, this);
+    vbat_sub_ = nh_.subscribe("battery", 1, &WindEstimatorNode::crazyflieVbatCallback, this);
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
@@ -228,12 +228,24 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
     // ROS_INFO_STREAM("motor_rpms: " << cmd_motor_speeds_[0] << "\t" << cmd_motor_speeds_[1] << "\t" << cmd_motor_speeds_[2] << "\t" << cmd_motor_speeds_[3]);
 }
 
-void WindEstimatorNode::vbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg) 
+void WindEstimatorNode::inaVbatCallback(const crazyflie_driver::GenericLogData::ConstPtr& msg) 
 {
     /*
     Process vbat information coming from the Crazyflie 
     */
    vbat_ = msg->values[0];
+
+   vbat_received_ = true;
+
+    // ROS_INFO_STREAM("vbat: " << vbat_);
+}
+
+void WindEstimatorNode::crazyflieVbatCallback(const std_msgs::Float32::ConstPtr& msg) 
+{
+    /*
+    Process vbat information coming from the Crazyflie 
+    */
+   vbat_ = msg->data;
 
    vbat_received_ = true;
 
