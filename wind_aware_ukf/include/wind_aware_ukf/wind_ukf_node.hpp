@@ -61,17 +61,10 @@ private:
     double cmd_thrust_;
 
     // Acceleration Estimation from Motion Capture
+    Eigen::Vector3d prev_odom_acceleration_;
     Eigen::Vector3d odom_acceleration_;
     Eigen::Vector3d prev_ground_velocity_;
     ros::Time prev_velocity_time_;
-
-    // IMU Calibration
-    Eigen::Vector3d linear_acceleration_bias_;
-    Eigen::Vector3d linear_acceleration_bias_sum_;
-    double calibration_count_;
-    double calibration_count_thresh_;
-    double velocity_thresh_;
-    double acc_thresh_;
 
     // ROS and robot variables
     ros::NodeHandle nh_;

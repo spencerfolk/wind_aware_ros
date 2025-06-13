@@ -3,7 +3,7 @@
 WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh_(ns), 
     filter_initialized_(false),
     imu_received_(false), odom_received_(false), so3cmd_received_(false), motorpwm_received_(false), vbat_received_(false),
-    estimator_(dt, mass, 9.81, 3.49e-08, 2.097e-6, 1.339e-5, 5.74e-4, 0.05)
+    estimator_(dt, mass, 9.81, 3.49e-08, 0.8*2.097e-6, 1.339e-5, 5.74e-4, 0.01)
 {
     /*
     Constructor
@@ -23,11 +23,11 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh
     accel_vector_pub_ = nh_.advertise<sensor_msgs::Imu>("mocap_acceleration_vector", 1);
     accel_vector_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("accel_vector_marker", 1);
 
-    linear_acceleration_bias_.setZero();
-    calibration_count_ = 0;
-    calibration_count_thresh_ = 50;
-    velocity_thresh_ = 0.1;
-    acc_thresh_ = 0.75;
+    prev_odom_acceleration_.setZero();
+    prev_odom_acceleration_.z() = estimator_.g_;
+
+    odom_acceleration_.setZero();
+    odom_acceleration_.z() = estimator_.g_;
     
 }
 
@@ -124,17 +124,12 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     ros::Time current_time = msg->header.stamp;
     double dt = (current_time - prev_velocity_time_).toSec();
 
-    if (odom_received_ && dt > 1e-5)  // avoid divide-by-zero on first callback
+    if (dt > 1e-5 && dt < 1e-1)  // only update odom_acceleration_ if dt is reasonable
     {
         odom_acceleration_ = (ground_velocity_ - prev_ground_velocity_) / dt;
 
         // Add gravity acceleration. 
         odom_acceleration_.z() += estimator_.g_;
-
-    } else {
-        odom_acceleration_.x() = 0.0;
-        odom_acceleration_.y() = 0.0;
-        odom_acceleration_.z() = estimator_.g_;
     }
 
     odom_acceleration_ = orientation_.inverse() * odom_acceleration_;
@@ -145,6 +140,15 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     for (int i = 0; i < 3; ++i) {
         odom_acceleration_[i] = std::max(min_val, std::min(odom_acceleration_[i], max_val));
     }
+
+    // Low-pass filter parameters
+    double tau_acc = 0.1;  // time constant in seconds (tune this)
+    double alpha = dt / (tau_acc + dt);
+
+    // Apply low-pass filter to odom_acceleration_
+    odom_acceleration_ = alpha * odom_acceleration_ + (1.0 - alpha) * prev_odom_acceleration_;
+
+    prev_odom_acceleration_ = odom_acceleration_;
 
     // Store current velocity and time for next iteration
     prev_ground_velocity_ = ground_velocity_;
