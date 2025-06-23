@@ -48,26 +48,43 @@ void WindEstimatorNode::initializeFilter()
     x0.segment<3>(10) = ground_velocity_;
     x0.segment<3>(13) = Eigen::Vector3d::Constant(1e-5);
 
-    // Initialize Q
-    Q = Eigen::MatrixXd::Zero(16, 16);
-    Q.diagonal().segment(0, 4).setConstant(1e-5);        // Motor speeds
-    Q.diagonal().segment(4, 3).setConstant(0.5);        // Euler angles
-    Q.diagonal().segment(7, 3).setConstant(0.1);        // body rates
-    Q.diagonal().segment(10, 3).setConstant(0.1);       // Ground velocity (body frame)
-    Q.diagonal().segment(13, 3).setConstant(5e-2);       // Wind velocity (body frame)
+    try {
 
-    // Initialize R
-    R = Eigen::MatrixXd::Zero(12, 12);
-    R.diagonal().segment(0, 3).setConstant(0.010);                  // Euler angles
-    R.diagonal().segment(3, 3).setConstant(0.5);                    // Body rates
-    R.diagonal().segment(6, 3).setConstant(0.01);                   // Ground velocity 
-    double val =  std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
-    R.diagonal().segment(9, 3).setConstant(10*val);                 // Accelerometer
+        Q = loadDiagonalMatrix(nh_, "Q_diag", 16);
+        R = loadDiagonalMatrix(nh_, "R_diag", 12);
+        P0 = loadDiagonalMatrix(nh_, "P0_diag", 16);
 
-    // Initialize P0
-    P0 = Eigen::MatrixXd::Zero(16, 16);
-    P0.diagonal().segment(0, 4).setConstant(2.5);       // Motor speeds
-    P0.diagonal().segment(4, 12).setConstant(0.5);      // All other states
+        ROS_INFO_STREAM("Filter params loaded from ROS parameter file.");
+
+    } catch (const std::exception& e) { // ros params not loaded
+
+        ROS_ERROR_STREAM("Matrix loading failed: " << e.what());
+        ROS_WARN_STREAM("Try: rosparam get " << nh_.getNamespace() << "/Q_diag");
+
+        ROS_INFO_STREAM("Loading filter parameter defaults.");
+
+        // Initialize Q
+        Q = Eigen::MatrixXd::Zero(16, 16);
+        Q.diagonal().segment(0, 4).setConstant(1e-5);        // Motor speeds
+        Q.diagonal().segment(4, 3).setConstant(0.5);        // Euler angles
+        Q.diagonal().segment(7, 3).setConstant(0.1);        // body rates
+        Q.diagonal().segment(10, 3).setConstant(0.1);       // Ground velocity (body frame)
+        Q.diagonal().segment(13, 3).setConstant(5e-2);       // Wind velocity (body frame)
+
+        // Initialize R
+        R = Eigen::MatrixXd::Zero(12, 12);
+        R.diagonal().segment(0, 3).setConstant(0.010);                  // Euler angles
+        R.diagonal().segment(3, 3).setConstant(0.5);                    // Body rates
+        R.diagonal().segment(6, 3).setConstant(0.01);                   // Ground velocity 
+        double val =  std::sqrt(100.0 / 2.0) * std::pow(0.38, 2); 
+        R.diagonal().segment(9, 3).setConstant(10*val);                 // Accelerometer
+
+        // Initialize P0
+        P0 = Eigen::MatrixXd::Zero(16, 16);
+        P0.diagonal().segment(0, 4).setConstant(2.5);       // Motor speeds
+        P0.diagonal().segment(4, 12).setConstant(0.5);      // All other states
+        return;
+    }
 
     // Initialize weight spread param. 
     estimator_.wo = 0.5;  // A little more conservative

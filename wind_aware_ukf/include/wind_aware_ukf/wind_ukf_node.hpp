@@ -19,6 +19,19 @@
 #include <wind_aware_ukf/wind_ukf.hpp>
 #include <wind_aware_ukf/motor_utils.hpp>
 
+Eigen::MatrixXd loadDiagonalMatrix(ros::NodeHandle& nh, const std::string& param_name, int size) { // Helper function for loading diagonal elements from ROS params. 
+    std::vector<double> diag;
+    if (!nh.getParam(param_name, diag) || diag.size() != size) {
+        throw std::runtime_error("Missing or invalid " + param_name + " param (expected " + std::to_string(size) + " elements)");
+    }
+
+    Eigen::MatrixXd mat = Eigen::MatrixXd::Zero(size, size);
+    for (int i = 0; i < size; ++i) {
+        mat(i, i) = diag[i];
+    }
+    return mat;
+}
+
 class WindEstimatorNode
 {
 public:
