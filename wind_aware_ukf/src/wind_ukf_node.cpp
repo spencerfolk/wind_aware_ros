@@ -1,9 +1,9 @@
 #include <wind_aware_ukf/wind_ukf_node.hpp>
 
-WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass): nh_(ns), 
+WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass, double g, double keta, double kd, double kz, double kh, double tau_m): nh_(ns), 
     filter_initialized_(false),
     imu_received_(false), odom_received_(false), so3cmd_received_(false), motorpwm_received_(false), vbat_received_(false),
-    estimator_(dt, mass, 9.81, 3.49e-08, 0.8*2.097e-6, 1.339e-5, 5.74e-4, 0.01)
+    estimator_(dt, mass, g, keta, kd, kz, kh, tau_m)
 {
     /*
     Constructor
@@ -59,8 +59,6 @@ void WindEstimatorNode::initializeFilter()
     } catch (const std::exception& e) { // ros params not loaded
 
         ROS_ERROR_STREAM("Matrix loading failed: " << e.what());
-        ROS_WARN_STREAM("Try: rosparam get " << nh_.getNamespace() << "/Q_diag");
-
         ROS_INFO_STREAM("Loading filter parameter defaults.");
 
         // Initialize Q
@@ -159,7 +157,7 @@ void WindEstimatorNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     }
 
     // Low-pass filter parameters
-    double tau_acc = 0.1;  // time constant in seconds (tune this)
+    double tau_acc = 0.25;  // time constant in seconds (tune this)
     double alpha = dt / (tau_acc + dt);
 
     // Apply low-pass filter to odom_acceleration_
@@ -486,9 +484,23 @@ int main(int argc, char **argv)
     nh.param("estimator_freq", freq, 100.0f);
     float mass;
     nh.param("mass", mass, 0.040f);
+    
+    double g, keta, kd, kz, kh, tau_m;
+    nh.param("ukf_g", g, 9.81);
+    nh.param("ukf_keta", keta, 3.49e-08);
+    nh.param("ukf_kd", kd, 2.097e-6);
+    nh.param("ukf_kz", kz, 1.339e-5);
+    nh.param("ukf_kh", kh, 5.74e-4);
+    nh.param("ukf_tau_m", tau_m, 0.01);
+
+    ROS_INFO_STREAM("ukf_keta: " << keta);
+    ROS_INFO_STREAM("ukf_kd: " << kd);
+    ROS_INFO_STREAM("ukf_kz: " << kz);
+    ROS_INFO_STREAM("ukf_kh: " << kh);
+    ROS_INFO_STREAM("ukf_tau_m: " << tau_m);
 
     ROS_INFO_STREAM("Setting up wind estimator node...");
-    WindEstimatorNode wind_estimator_node(ns, 1.0/freq, mass);
+    WindEstimatorNode wind_estimator_node(ns, 1.0/freq, mass, g, keta, kd, kz, kh, tau_m);
 
     // Set up a timer to produce measurements at a regular rate. 
     ros::NodeHandle node_nh(ns);
