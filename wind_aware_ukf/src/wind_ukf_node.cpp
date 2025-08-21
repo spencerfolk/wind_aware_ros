@@ -16,7 +16,7 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass, dou
     imu_sub_ = nh_.subscribe("imu", 1, &WindEstimatorNode::imuCallback, this);
     odom_sub_ = nh_.subscribe("odom", 1, &WindEstimatorNode::odomCallback, this);
     motorpwm_sub_ = nh_.subscribe("motor_pwms", 1, &WindEstimatorNode::motorpwmCallback, this);
-    vbat_sub_ = nh_.subscribe("battery", 1, &WindEstimatorNode::crazyflieVbatCallback, this);
+    vbat_sub_ = nh_.subscribe("ina_voltage", 1, &WindEstimatorNode::inaVbatCallback, this);
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
@@ -228,7 +228,7 @@ void WindEstimatorNode::motorpwmCallback(const crazyflie_driver::GenericLogData:
 
     // Compute motor rpms using a mapping. In this case we can use the battery compensated model. 
     // TODO: Remove these hard coded coefficients and move them to rosparams!
-    cmd_motor_speeds_ = pwmToMotorSpeedsBatCompensated(cmd_motor_pwms_, vbat_, Eigen::Vector3d(4.3034, 0.759, 10000), MotorSpeedUnits::RAD_PER_SEC);
+    cmd_motor_speeds_ = pwmToMotorSpeedsBatCompensated(cmd_motor_pwms_, vbat_, Eigen::Vector3d(3.4733, 0.5535, 4672), MotorSpeedUnits::RAD_PER_SEC);
 
     // // Send measurement to estimator  TODO: Note the hardcoded 1e3, please remove!!
     // estimator_.new_observation(0, cmd_motor_speeds_[0]/1e3);
