@@ -17,6 +17,7 @@ WindEstimatorNode::WindEstimatorNode(std::string ns, double dt, double mass, dou
     odom_sub_ = nh_.subscribe("odom", 1, &WindEstimatorNode::odomCallback, this);
     motorpwm_sub_ = nh_.subscribe("motor_pwms", 1, &WindEstimatorNode::motorpwmCallback, this);
     vbat_sub_ = nh_.subscribe("ina_voltage", 1, &WindEstimatorNode::inaVbatCallback, this);
+    // vbat_sub_ = nh_.subscribe("battery", 1, &WindEstimatorNode::crazyflieVbatCallback, this);
     so3cmd_sub_ = nh_.subscribe("so3_cmd", 1, &WindEstimatorNode::so3cmdCallback, this);
     wind_estimate_pub_ = nh_.advertise<wind_aware_ukf::WindEstimateStamped>("wind_estimate", 1);
     wind_estimate_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("wind_vector_marker", 1);
